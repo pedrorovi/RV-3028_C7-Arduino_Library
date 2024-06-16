@@ -26,12 +26,11 @@ void setup() {
   Serial.println("Read/Write UNIX Time - RTC Example");
 
   Wire.begin();
-  if (rtc.begin() == false) {
+  while (rtc.begin() == false) {
     Serial.println("Something went wrong, check wiring");
-    while (1);
+    delay(1000);
   }
-  else
-    Serial.println("RTC online!");
+  Serial.println("RTC online!");
 }
 
 void loop() {
