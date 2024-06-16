@@ -39,7 +39,7 @@ void loop() {
   //PRINT TIME
   if (rtc.updateTime() == false) //Updates the time variables from RTC
   {
-    Serial.print("RTC failed to update");
+    Serial.println("RTC failed to update");
   } else {
     String currentTime = rtc.stringTimeStamp();
     Serial.println(currentTime + "     \'s\' = set UNIX time (independent from real time)");
