@@ -26,12 +26,11 @@ void setup() {
   Serial.println("Read/Write UNIX Time - RTC Example");
 
   Wire.begin();
-  if (rtc.begin() == false) {
+  while (rtc.begin() == false) {
     Serial.println("Something went wrong, check wiring");
-    while (1);
+    delay(1000);
   }
-  else
-    Serial.println("RTC online!");
+  Serial.println("RTC online!");
 }
 
 void loop() {
@@ -39,7 +38,7 @@ void loop() {
   //PRINT TIME
   if (rtc.updateTime() == false) //Updates the time variables from RTC
   {
-    Serial.print("RTC failed to update");
+    Serial.println("RTC failed to update");
   } else {
     String currentTime = rtc.stringTimeStamp();
     Serial.println(currentTime + "     \'s\' = set UNIX time (independent from real time)");
