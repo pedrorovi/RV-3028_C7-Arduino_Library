@@ -76,11 +76,15 @@ bool RV3028::begin(TwoWire &wirePort, bool set_24Hour, bool disable_TrickleCharg
 	//_i2cPort->begin();
 	_i2cPort = &wirePort;
 
-	delay(1);
-	if (set_24Hour) { set24Hour(); delay(1); }
-	if (disable_TrickleCharge) { disableTrickleCharge(); delay(1); }
-
-	return((set_LevelSwitchingMode ? setBackupSwitchoverMode(3) : true) && (reset_Status ? writeRegister(RV3028_STATUS, 0x00) : true));
+	delay(10);
+	if (set_24Hour) { set24Hour(); delay(10); }
+	if (disable_TrickleCharge) { disableTrickleCharge(); delay(10); }
+	bool ok = setBackupSwitchoverMode(3);
+	delay(10);
+	if (!ok){
+		return false;
+	}
+	return((reset_Status ? writeRegister(RV3028_STATUS, 0x00) : true));
 }
 
 bool RV3028::setTime(uint8_t sec, uint8_t min, uint8_t hour, uint8_t weekday, uint8_t date, uint8_t month, uint16_t year)
