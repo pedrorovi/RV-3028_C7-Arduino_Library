@@ -19,16 +19,12 @@ Distributed as-is; no warranty is given.
 
 #pragma once
 
-#if (ARDUINO >= 100)
-#include "Arduino.h"
-#else
-#include "WProgram.h"
-#endif
+#include "stdint.h"
 
-#include <Wire.h>
+#include "i2c_hal_interface.h"
 
 // The 7-bit I2C ADDRESS of the RV3028
-#define RV3028_ADDR (uint8_t)0x52
+#define RV3028_ADDR (uint8_t) 0x52
 
 // REGISTERS
 // Clock registers
@@ -196,11 +192,11 @@ class RV3028 {
    public:
     RV3028(void);
 
-    bool begin(TwoWire& wirePort = Wire,
-               bool set_24Hour = true,
-               bool disable_TrickleCharge = true,
+    bool begin(I2CSensorHalInterface* hal,
+               bool set_24Hour             = true,
+               bool disable_TrickleCharge  = true,
                bool set_LevelSwitchingMode = true,
-               bool reset_Status = true);
+               bool reset_Status           = true);
 
     bool setTime(uint8_t sec, uint8_t min, uint8_t hour, uint8_t weekday, uint8_t date, uint8_t month, uint16_t year);
     bool setTime(uint8_t* time, uint8_t len);
@@ -300,7 +296,18 @@ class RV3028 {
 
    private:
     uint8_t _time[TIME_ARRAY_LENGTH];
-    TwoWire* _i2cPort;
+    I2CSensorHalInterface* _hal;  // Pointer to the HAL interface for I2C communication
+    void delay(uint32_t ms) {
+        if (_hal) {
+            _hal->delay_ms(ms);
+        }
+    }  // Use HAL delay function for compatibility with different platforms
+    uint32_t millis() {
+        if (_hal) {
+            return _hal->get_tick_millis();
+        }
+        return 0;  // Fallback if HAL is not set
+    }
 };
 
 // POSSIBLE ENHANCEMENTS :

@@ -16,6 +16,8 @@ Distributed as-is; no warranty is given.
 
 #include "RV-3028-C7.h"
 
+#include "stdio.h"
+
 //****************************************************************************//
 //
 //  Settings and configuration
@@ -66,7 +68,7 @@ Distributed as-is; no warranty is given.
 
 RV3028::RV3028(void) {}
 
-bool RV3028::begin(TwoWire& wirePort,
+bool RV3028::begin(I2CSensorHalInterface* hal,
                    bool set_24Hour,
                    bool disable_TrickleCharge,
                    bool set_LevelSwitchingMode,
@@ -74,7 +76,8 @@ bool RV3028::begin(TwoWire& wirePort,
     // We require caller to begin their I2C port, with the speed of their choice
     // external to the library
     //_i2cPort->begin();
-    _i2cPort = &wirePort;
+    _hal = hal;
+    delay(10);  // Wait for I2C to be ready
 
     delay(10);
     if (set_24Hour) {
@@ -102,11 +105,11 @@ bool RV3028::setTime(uint8_t sec,
                      uint16_t year) {
     _time[TIME_SECONDS] = DECtoBCD(sec);
     _time[TIME_MINUTES] = DECtoBCD(min);
-    _time[TIME_HOURS] = DECtoBCD(hour);
+    _time[TIME_HOURS]   = DECtoBCD(hour);
     _time[TIME_WEEKDAY] = DECtoBCD(weekday);
-    _time[TIME_DATE] = DECtoBCD(date);
-    _time[TIME_MONTH] = DECtoBCD(month);
-    _time[TIME_YEAR] = DECtoBCD(year - 2000);
+    _time[TIME_DATE]    = DECtoBCD(date);
+    _time[TIME_MONTH]   = DECtoBCD(month);
+    _time[TIME_YEAR]    = DECtoBCD(year - 2000);
 
     bool status = false;
 
@@ -168,7 +171,7 @@ bool RV3028::setYear(uint16_t value) {
 bool RV3028::setToCompilerTime() {
     _time[TIME_SECONDS] = DECtoBCD(BUILD_SECOND);
     _time[TIME_MINUTES] = DECtoBCD(BUILD_MINUTE);
-    _time[TIME_HOURS] = DECtoBCD(BUILD_HOUR);
+    _time[TIME_HOURS]   = DECtoBCD(BUILD_HOUR);
 
     // Build_Hour is 0-23, convert to 1-12 if needed
     if (is12Hour()) {
@@ -193,15 +196,15 @@ bool RV3028::setToCompilerTime() {
 
     // Calculate weekday (from here: http://stackoverflow.com/a/21235587)
     // 0 = Sunday, 6 = Saturday
-    uint16_t d = BUILD_DATE;
-    uint16_t m = BUILD_MONTH;
-    uint16_t y = BUILD_YEAR;
-    uint16_t weekday = (d += m < 3 ? y-- : y - 2, 23 * m / 9 + d + 4 + y / 4 - y / 100 + y / 400) % 7 + 1;
+    uint16_t d          = BUILD_DATE;
+    uint16_t m          = BUILD_MONTH;
+    uint16_t y          = BUILD_YEAR;
+    uint16_t weekday    = (d += m < 3 ? y-- : y - 2, 23 * m / 9 + d + 4 + y / 4 - y / 100 + y / 400) % 7 + 1;
     _time[TIME_WEEKDAY] = DECtoBCD(weekday);
 
-    _time[TIME_DATE] = DECtoBCD(BUILD_DATE);
+    _time[TIME_DATE]  = DECtoBCD(BUILD_DATE);
     _time[TIME_MONTH] = DECtoBCD(BUILD_MONTH);
-    _time[TIME_YEAR] = DECtoBCD(BUILD_YEAR - 2000);  //! Not Y2K (or Y2.1K)-proof :(
+    _time[TIME_YEAR]  = DECtoBCD(BUILD_YEAR - 2000);  //! Not Y2K (or Y2.1K)-proof :(
 
     return setTime(_time, TIME_ARRAY_LENGTH);
 }
@@ -355,7 +358,7 @@ void RV3028::set24Hour() {
     if (is12Hour() == true) {
         // Not sure what changing the CTRL2 register will do to hour register so let's get a copy
         uint8_t hour = readRegister(RV3028_HOURS);  // Get the current 12 hour formatted time in BCD
-        bool pm = false;
+        bool pm      = false;
         if (hour & (1 << HOURS_AM_PM))  // Is the AM/PM bit set?
         {
             pm = true;
@@ -398,7 +401,8 @@ bool RV3028::setUNIX(uint32_t value) {
 uint32_t RV3028::getUNIX() {
     uint8_t unix_reg[4];
     readMultipleRegisters(RV3028_UNIX_TIME0, unix_reg, 4);
-    return ((uint32_t)unix_reg[3] << 24) | ((uint32_t)unix_reg[2] << 16) | ((uint32_t)unix_reg[1] << 8) | unix_reg[0];
+    return ((uint32_t) unix_reg[3] << 24) | ((uint32_t) unix_reg[2] << 16) | ((uint32_t) unix_reg[1] << 8) |
+           unix_reg[0];
 }
 
 /*********************************
@@ -723,51 +727,59 @@ uint8_t RV3028::DECtoBCD(uint8_t val) {
 }
 
 uint8_t RV3028::readRegister(uint8_t addr) {
-    _i2cPort->beginTransmission(RV3028_ADDR);
-    _i2cPort->write(addr);
-    _i2cPort->endTransmission();
+    // _i2cPort->beginTransmission(RV3028_ADDR);
+    // _i2cPort->write(addr);
+    // _i2cPort->endTransmission();
 
-    _i2cPort->requestFrom(RV3028_ADDR, (uint8_t)1);
-    if (_i2cPort->available()) {
-        return _i2cPort->read();
-    } else {
-        return (0xFF);  // Error
-    }
+    // _i2cPort->requestFrom(RV3028_ADDR, (uint8_t) 1);
+    // if (_i2cPort->available()) {
+    //     return _i2cPort->read();
+    // } else {
+    //     return (0xFF);  // Error
+    // }
+
+    uint8_t byte;
+    const bool ok = _hal->receive_byte_from_register(RV3028_ADDR, addr, &byte);
+    return byte;
 }
 
 bool RV3028::writeRegister(uint8_t addr, uint8_t val) {
-    _i2cPort->beginTransmission(RV3028_ADDR);
-    _i2cPort->write(addr);
-    _i2cPort->write(val);
-    if (_i2cPort->endTransmission() != 0)
-        return (false);  // Error: Sensor did not ack
-    return (true);
+    // _i2cPort->beginTransmission(RV3028_ADDR);
+    // _i2cPort->write(addr);
+    // _i2cPort->write(val);
+    // if (_i2cPort->endTransmission() != 0)
+    //     return (false);  // Error: Sensor did not ack
+    // return (true);
+
+    return _hal->send_byte_to_register(RV3028_ADDR, addr, val);
 }
 
 bool RV3028::readMultipleRegisters(uint8_t addr, uint8_t* dest, uint8_t len) {
-    _i2cPort->beginTransmission(RV3028_ADDR);
-    _i2cPort->write(addr);
-    if (_i2cPort->endTransmission() != 0)
-        return (false);  // Error: Sensor did not ack
+    // _i2cPort->beginTransmission(RV3028_ADDR);
+    // _i2cPort->write(addr);
+    // if (_i2cPort->endTransmission() != 0)
+    //     return (false);  // Error: Sensor did not ack
 
-    _i2cPort->requestFrom(RV3028_ADDR, len);
-    for (uint8_t i = 0; i < len; i++) {
-        dest[i] = _i2cPort->read();
-    }
+    // _i2cPort->requestFrom(RV3028_ADDR, len);
+    // for (uint8_t i = 0; i < len; i++) {
+    //     dest[i] = _i2cPort->read();
+    // }
 
-    return (true);
+    // return (true);
+    return _hal->receive_bytes_from_register(RV3028_ADDR, addr, dest, len);
 }
 
 bool RV3028::writeMultipleRegisters(uint8_t addr, uint8_t* values, uint8_t len) {
-    _i2cPort->beginTransmission(RV3028_ADDR);
-    _i2cPort->write(addr);
-    for (uint8_t i = 0; i < len; i++) {
-        _i2cPort->write(values[i]);
-    }
+    // _i2cPort->beginTransmission(RV3028_ADDR);
+    // _i2cPort->write(addr);
+    // for (uint8_t i = 0; i < len; i++) {
+    //     _i2cPort->write(values[i]);
+    // }
 
-    if (_i2cPort->endTransmission() != 0)
-        return (false);  // Error: Sensor did not ack
-    return (true);
+    // if (_i2cPort->endTransmission() != 0)
+    //     return (false);  // Error: Sensor did not ack
+    // return (true);
+    return _hal->send_bytes_to_register(RV3028_ADDR, addr, values, len);
 }
 
 bool RV3028::writeConfigEEPROM_RAMmirror(uint8_t eepromaddr, uint8_t val) {
